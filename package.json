@@ -1,0 +1,12 @@
+{
+  "name": "gcp-k8s-demo",
+  "version": "1.0.0",
+  "description": "Simple Node API for GCP CI/CD",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
