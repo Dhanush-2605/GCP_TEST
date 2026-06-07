@@ -1,0 +1,64 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: core-appliance-338915
+  REGION: us-central1
+  REPO_NAME: nodejs-repo
+  IMAGE_NAME: nodejs-app
+  CLUSTER_NAME: nodejs-cluster
+  # Replace the line below with your exact provider string
+  WORKLOAD_IDENTITY_PROVIDER: 'projects/815415208014/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+  SERVICE_ACCOUNT: 'github-actions-sa@core-appliance-338915.iam.gserviceaccount.com'
+
+jobs:
+  build-and-deploy:
+    name: Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+    
+    # REQUIRED: This tells GitHub to generate the temporary OIDC token we discussed
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (The Handshake)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
+          service_account: '${{ env.SERVICE_ACCOUNT }}'
+
+      - name: Configure Docker Auth
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Build and Push Docker Image
+        run: |
+          # Use the GitHub commit hash ($GITHUB_SHA) to tag the image uniquely
+          IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${GITHUB_SHA}"
+          
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+
+      - name: Connect to GKE Cluster
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: '${{ env.CLUSTER_NAME }}'
+          location: '${{ env.REGION }}'
+
+      - name: Deploy to GKE
+        run: |
+          IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${GITHUB_SHA}"
+          
+          # Replace the placeholder in the k8s.yaml file with the actual image tag we just built
+          sed -i "s|IMAGE_PLACEHOLDER|$IMAGE_TAG|g" k8s.yaml
+          
+          # Apply the configuration to the cluster
+          kubectl apply -f k8s.yaml
