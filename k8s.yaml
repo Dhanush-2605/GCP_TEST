@@ -1,38 +1,145 @@
-
-
-
 ---
+# ==========================================
+# TIER 3: DATABASE (PostgreSQL)
+# ==========================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 1Gi
+---
+
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nodejs-app-deployment
+  name: postgres-deployment
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: nodejs-app
+      app: postgres
   template:
     metadata:
       labels:
-        app: nodejs-app
+        app: postgres
     spec:
       containers:
-      - name: nodejs-app-container
-        # The pipeline uses 'sed' to inject the correct image tag here automatically
-        image: IMAGE_PLACEHOLDER
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "supersecretpassword"
+        - name: POSTGRES_DB
+          value: "mytierdb"
         ports:
-        - containerPort: 8080
-
+        - containerPort: 5432
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgres-storage
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nodejs-app-service
+  name: postgres-service
 spec:
-  type: LoadBalancer
+  type: ClusterIP # Internal network only
   selector:
-    app: nodejs-app
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
+---
+# ==========================================
+# TIER 2: BACKEND (Node.js API)
+# ==========================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: BACKEND_IMAGE_PLACEHOLDER # GitHub Actions will inject this
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          value: "postgres-service" # Connects via internal DNS
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "supersecretpassword"
+        - name: DB_NAME
+          value: "mytierdb"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  type: ClusterIP # Internal network only, frontend proxy will route here
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+
+---
+# ==========================================
+# TIER 1: FRONTEND (React UI)
+# ==========================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: FRONTEND_IMAGE_PLACEHOLDER # GitHub Actions will inject this
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  type: LoadBalancer # Exposes to the public internet
+  selector:
+    app: frontend
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 80
