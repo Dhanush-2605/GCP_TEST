@@ -17,14 +17,39 @@ const pool = new Pool({
   port: 5432,
 });
 
-// Test database connection on startup
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error connecting to the database:', err.stack);
-  } else {
-    console.log('Successfully connected to PostgreSQL at:', res.rows[0].now);
+// Auto-Initialize Database Schema on startup
+async function initializeDatabase() {
+  try {
+    // 1. Test the connection
+    const res = await pool.query('SELECT NOW()');
+    console.log('System: Successfully connected to PostgreSQL at:', res.rows[0].now);
+
+    // 2. Create the table safely using "IF NOT EXISTS"
+    const createTableQuery = `
+      CREATE TABLE IF NOT EXISTS sample_items (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL
+      );
+    `;
+    await pool.query(createTableQuery);
+    console.log('System: Table "sample_items" verified.');
+
+    // 3. Optional: Seed data if the table is completely empty
+    const countResult = await pool.query('SELECT COUNT(*) FROM sample_items');
+    if (parseInt(countResult.rows[0].count) === 0) {
+      console.log('System: Table is empty. Injecting seed data...');
+      await pool.query(`INSERT INTO sample_items (name) VALUES ('Auto-Seeded Cloud Node 1'), ('Auto-Seeded Cloud Node 2')`);
+      console.log('System: Seed data injected successfully.');
+    }
+  } catch (err) {
+    console.error('System: FATAL error during database initialization:', err.stack);
+    // Exit the process if the DB fails, letting Kubernetes restart the pod
+    process.exit(1); 
   }
-});
+}
+
+// Run the initialization
+initializeDatabase();
 
 // API Endpoint to fetch data from the database
 app.get('/api/data', async (req, res) => {
