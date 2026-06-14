@@ -38,6 +38,8 @@ spec:
           value: "supersecretpassword"
         - name: POSTGRES_DB
           value: "mytierdb"
+        - name: PGDATA                          
+          value: "/var/lib/postgresql/data/pgdata" 
         ports:
         - containerPort: 5432
         volumeMounts:
