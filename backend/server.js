@@ -8,15 +8,18 @@ const port = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// Configure the connection pool using environment variables
+const fs = require('fs');
+
+// Read the securely injected password file
+const dbPassword = fs.readFileSync('/mnt/secrets/db-password.txt', 'utf8').trim();
+
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || 'postgres-service',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
+  password: dbPassword, 
   database: process.env.DB_NAME || 'mytierdb',
   port: 5432,
 });
-
 // Auto-Initialize Database Schema on startup
 async function initializeDatabase() {
   try {
